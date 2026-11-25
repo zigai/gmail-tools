@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/zigai/gmail-tools/internal/process"
 )
 
 func TestRootCommandShowsHelpByDefault(t *testing.T) {
@@ -43,14 +45,18 @@ func TestRootCommandShowsVersion(t *testing.T) {
 }
 
 func executeRootCommand(args ...string) (string, string, error) {
+	return executeWithEnv(environment{configPath: "/nonexistent/config.toml"}, args...)
+}
+
+func executeWithEnv(env environment, args ...string) (string, string, error) {
 	var (
 		stdout bytes.Buffer
 		stderr bytes.Buffer
 	)
 
-	rootCommand := newRootCommand()
-	rootCommand.SetOut(&stdout)
-	rootCommand.SetErr(&stderr)
+	env.streams = process.Streams{Stdout: &stdout, Stderr: &stderr}
+
+	rootCommand := newRootCommand(env)
 	rootCommand.SetArgs(args)
 
 	err := rootCommand.Execute()
