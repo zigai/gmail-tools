@@ -160,6 +160,117 @@ func TestAccountsShowsInboxCountsAndFailures(t *testing.T) {
 	}
 }
 
+func TestSendersPrintsCountsForQuery(t *testing.T) {
+	gog := testutil.NewFakeBinary(t, testutil.Response{Stdout: `{"messages": [
+		{"from": "Shop <deals@shop.example>", "labels": ["INBOX", "UNREAD"]},
+		{"from": "deals@shop.example", "labels": ["INBOX", "UNREAD"]},
+		{"from": "friend@example.net", "labels": ["INBOX"]}
+	]}`})
+
+	stdout, _, err := executeWithEnv(testEnv(t, gog, gog), "senders", "--top", "1", "newer_than:7d")
+	if err != nil {
+		t.Fatalf("execute error = %v", err)
+	}
+
+	lines := outputLines(stdout)
+	if len(lines) != 2 || !strings.HasPrefix(fields(lines[1]), "2 2 deals@shop.example") {
+		t.Fatalf("stdout = %q, want header and the top sender", stdout)
+	}
+
+	got := gog.Args(t)
+	if got[len(got)-1] != "newer_than:7d" || slices.Contains(got, "--wrap-untrusted") {
+		t.Fatalf("gog args = %q, want the query last and no untrusted markers", got)
+	}
+}
+
+func filtersGog(t *testing.T) testutil.FakeBinary {
+	t.Helper()
+
+	return testutil.NewFakeBinary(
+		t,
+		testutil.Response{Pattern: " filters list ", Stdout: `{"filters": [
+			{"id": "busy", "criteria": {"from": "busy@example.com"}, "action": {"removeLabelIds": ["INBOX"]}},
+			{"id": "dead", "criteria": {"subject": "gone"}, "action": {"addLabelIds": ["Label_1"]}},
+			{"id": "lots", "criteria": {"from": "lots@example.com"}, "action": {"addLabelIds": ["Label_1"]}}
+		]}`},
+		testutil.Response{
+			Pattern: " labels list ",
+			Stdout:  `{"labels": [{"id": "Label_1", "name": "Old"}]}`,
+		},
+		testutil.Response{Pattern: "from:(busy@example.com)", Stdout: `{"totalMatches": 12}`},
+		testutil.Response{Pattern: "subject:(gone)", Stdout: `{"totalMatches": 0}`},
+		testutil.Response{
+			Pattern: "from:(lots@example.com)",
+			Stdout:  `{"totalMatchesAtLeast": 500}`,
+		},
+	)
+}
+
+func TestFiltersAuditListsLeastUsedFirst(t *testing.T) {
+	gog := filtersGog(t)
+
+	stdout, _, err := executeWithEnv(testEnv(t, gog, gog), "filters", "audit", "--since", "30d")
+	if err != nil {
+		t.Fatalf("execute error = %v", err)
+	}
+
+	lines := outputLines(stdout)
+	want := []string{
+		"0 label Old subject:(gone)",
+		"12 archive from:(busy@example.com)",
+		"500+ label Old from:(lots@example.com)",
+	}
+
+	if len(lines) != 4 {
+		t.Fatalf("stdout = %q", stdout)
+	}
+
+	for i, w := range want {
+		if fields(lines[i+1]) != w {
+			t.Fatalf("line %d = %q, want %q", i+1, fields(lines[i+1]), w)
+		}
+	}
+
+	for _, call := range gog.Calls(t) {
+		if slices.Contains(call, "--count") &&
+			!strings.HasSuffix(call[len(call)-1], " newer_than:30d") {
+			t.Fatalf("count query %q does not use the window", call[len(call)-1])
+		}
+	}
+}
+
+func TestFiltersAuditUnusedShowsOnlyZeroMatches(t *testing.T) {
+	gog := filtersGog(t)
+
+	stdout, _, err := executeWithEnv(testEnv(t, gog, gog), "filters", "audit", "--unused")
+	if err != nil {
+		t.Fatalf("execute error = %v", err)
+	}
+
+	lines := outputLines(stdout)
+	if len(lines) != 2 || fields(lines[1]) != "0 label Old subject:(gone)" {
+		t.Fatalf("stdout = %q", stdout)
+	}
+}
+
+func TestFiltersSuggestSkipsQuietSenders(t *testing.T) {
+	gog := testutil.NewFakeBinary(t, testutil.Response{Stdout: `{"messages": [
+		{"from": "deals@shop.example", "labels": ["INBOX"]},
+		{"from": "deals@shop.example", "labels": ["INBOX"]},
+		{"from": "friend@example.net", "labels": ["INBOX"]}
+	]}`})
+
+	stdout, _, err := executeWithEnv(testEnv(t, gog, gog), "filters", "suggest", "--min", "2")
+	if err != nil {
+		t.Fatalf("execute error = %v", err)
+	}
+
+	if !strings.Contains(stdout, "deals@shop.example") ||
+		strings.Contains(stdout, "friend@example.net") {
+		t.Fatalf("stdout = %q, want only the sender with 2 messages", stdout)
+	}
+}
+
 func TestFiltersRunsGmailctlWithAccountConfig(t *testing.T) {
 	gmailctlBinary := testutil.NewFakeBinary(t)
 
