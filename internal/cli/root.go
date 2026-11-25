@@ -92,6 +92,7 @@ func newRootCommand(env environment) *cobra.Command {
 
 	rootCommand.AddCommand(
 		newAccountsCommand(env),
+		newSearchCommand(env),
 		newFiltersCommand(env),
 		newMailCommand(env),
 		newDriveCommand(env),

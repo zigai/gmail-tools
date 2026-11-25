@@ -3,11 +3,13 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/zigai/gmail-tools/internal/config"
+	"github.com/zigai/gmail-tools/internal/gmail"
 	"github.com/zigai/gmail-tools/internal/gog"
 )
 
@@ -16,7 +18,7 @@ var errMissingAccountValue = errors.New("--account needs a value")
 func newAccountsCommand(env environment) *cobra.Command {
 	return &cobra.Command{
 		Use:   "accounts",
-		Short: "List configured accounts",
+		Short: "List accounts with their sign-in state and unread inbox mail",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg, err := loadConfig(env)
@@ -24,12 +26,21 @@ func newAccountsCommand(env environment) *cobra.Command {
 				return err
 			}
 
-			rows := [][]string{{"NAME", "EMAIL", "DEFAULT", "GMAILCTL CONFIG"}}
+			rows := [][]string{{"NAME", "EMAIL", "DEFAULT", "INBOX", "UNREAD", "STATUS"}}
 
 			for _, name := range cfg.Names() {
 				account := cfg.Accounts[name]
+				total, unread, status := "-", "-", "ok"
+
+				inbox, err := env.gmail(account).Inbox(cmd.Context())
+				if err != nil {
+					status = "error"
+				} else {
+					total, unread = strconv.Itoa(inbox.Total), strconv.Itoa(inbox.Unread)
+				}
+
 				rows = append(rows, []string{
-					name, account.Email, yesNo(name == cfg.DefaultAccount), account.GmailctlConfig,
+					name, account.Email, yesNo(name == cfg.DefaultAccount), total, unread, status,
 				})
 			}
 
@@ -59,6 +70,29 @@ func loadAccount(env environment, name string) (config.Account, error) {
 	}
 
 	return account, nil
+}
+
+func selectedAccounts(env environment, name string) ([]config.Account, error) {
+	if name != "" {
+		account, err := loadAccount(env, name)
+		if err != nil {
+			return nil, err
+		}
+
+		return []config.Account{account}, nil
+	}
+
+	cfg, err := loadConfig(env)
+	if err != nil {
+		return nil, err
+	}
+
+	accounts := make([]config.Account, 0, len(cfg.Accounts))
+	for _, name := range cfg.Names() {
+		accounts = append(accounts, cfg.Accounts[name])
+	}
+
+	return accounts, nil
 }
 
 func accountFlag(cmd *cobra.Command) string {
@@ -93,4 +127,8 @@ func splitAccount(cmd *cobra.Command, args []string) (string, []string, error) {
 
 func (env environment) gogRunner() gog.Runner {
 	return gog.Runner{Binary: env.gogBinary, Streams: env.streams}
+}
+
+func (env environment) gmail(account config.Account) gmail.Client {
+	return gmail.Client{Runner: env.gogRunner(), Email: account.Email}
 }

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/zigai/gmail-tools/internal/config"
@@ -34,6 +35,14 @@ func testEnv(
 	}
 
 	return environment{configPath: path, gogBinary: gog.Path, gmailctl: gmailctlBinary.Path}
+}
+
+func fields(line string) string {
+	return strings.Join(strings.Fields(line), " ")
+}
+
+func outputLines(stdout string) []string {
+	return strings.Split(strings.TrimSpace(stdout), "\n")
 }
 
 func TestMailSelectsAccount(t *testing.T) {
@@ -85,6 +94,69 @@ func TestDriveUsesDriveGroup(t *testing.T) {
 	if !slices.Contains(got, "--enable-commands=drive") ||
 		!slices.Equal(got[len(got)-2:], []string{"drive", "ls"}) {
 		t.Fatalf("gog args = %q, want drive ls with only drive enabled", got)
+	}
+}
+
+func TestSearchMergesAccountsNewestFirst(t *testing.T) {
+	gog := testutil.NewFakeBinary(t,
+		testutil.Response{Pattern: "--account=home@example.com", Stdout: `{"messages": [
+			{"id": "h1", "internalDateIso": "2026-03-01T10:00:00Z", "from": "a@example.com", "subject": "older"}
+		]}`},
+		testutil.Response{Pattern: "--account=work@example.com", Stdout: `{"messages": [
+			{"id": "w1", "internalDateIso": "2026-03-02T10:00:00Z", "from": "b@example.com", "subject": "newer"}
+		]}`},
+	)
+
+	stdout, _, err := executeWithEnv(testEnv(t, gog, gog), "search", "invoice")
+	if err != nil {
+		t.Fatalf("execute error = %v", err)
+	}
+
+	lines := outputLines(stdout)
+	if len(lines) != 3 || !strings.HasPrefix(fields(lines[1]), "work 2026-03-02") ||
+		!strings.HasPrefix(fields(lines[2]), "home 2026-03-01") {
+		t.Fatalf("stdout = %q, want work's newer match before home's", stdout)
+	}
+}
+
+func TestSearchWithAccountReadsOnlyThatAccount(t *testing.T) {
+	gog := testutil.NewFakeBinary(t, testutil.Response{Stdout: `{"messages": []}`})
+
+	if _, _, err := executeWithEnv(
+		testEnv(t, gog, gog),
+		"search",
+		"-a",
+		"work",
+		"invoice",
+	); err != nil {
+		t.Fatalf("execute error = %v", err)
+	}
+
+	calls := gog.Calls(t)
+	if len(calls) != 1 || !slices.Contains(calls[0], "--account=work@example.com") {
+		t.Fatalf("gog calls = %q, want one call for work", calls)
+	}
+}
+
+func TestAccountsShowsInboxCountsAndFailures(t *testing.T) {
+	gog := testutil.NewFakeBinary(
+		t,
+		testutil.Response{
+			Pattern: "--account=home@example.com",
+			Stdout:  `{"label": {"messagesTotal": 120, "messagesUnread": 7}}`,
+		},
+		testutil.Response{Pattern: "--account=work@example.com", Code: 4},
+	)
+
+	stdout, _, err := executeWithEnv(testEnv(t, gog, gog), "accounts")
+	if err != nil {
+		t.Fatalf("execute error = %v", err)
+	}
+
+	lines := outputLines(stdout)
+	if len(lines) != 3 || fields(lines[1]) != "home home@example.com yes 120 7 ok" ||
+		fields(lines[2]) != "work work@example.com no - - error" {
+		t.Fatalf("stdout = %q", stdout)
 	}
 }
 

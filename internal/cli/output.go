@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
 	"text/tabwriter"
+	"time"
 	"unicode"
 
 	"github.com/spf13/cobra"
@@ -27,6 +29,17 @@ func writeTable(cmd *cobra.Command, rows [][]string) error {
 	}
 
 	if err := table.Flush(); err != nil {
+		return fmt.Errorf("write output: %w", err)
+	}
+
+	return nil
+}
+
+func writeJSON(cmd *cobra.Command, value any) error {
+	encoder := json.NewEncoder(cmd.OutOrStdout())
+	encoder.SetIndent("", "  ")
+
+	if err := encoder.Encode(value); err != nil {
 		return fmt.Errorf("write output: %w", err)
 	}
 
@@ -59,6 +72,24 @@ func cmpEmpty(value string) string {
 	}
 
 	return value
+}
+
+func truncate(value string, width int) string {
+	runes := []rune(value)
+	if len(runes) <= width {
+		return value
+	}
+
+	return string(runes[:width-1]) + "…"
+}
+
+func shortDate(iso string) string {
+	parsed, err := time.Parse(time.RFC3339, iso)
+	if err != nil {
+		return iso
+	}
+
+	return parsed.Format("2006-01-02 15:04")
 }
 
 func yesNo(value bool) string {
