@@ -1,0 +1,59 @@
+version: 2
+project_name: "gmail-tools"
+
+builds:
+  - main: .
+    binary: gmail-tools
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/zigai/gmail-tools/internal/cli.version={{ .Version }}
+      - -X github.com/zigai/gmail-tools/internal/cli.commit={{ .ShortCommit }}
+      - -X github.com/zigai/gmail-tools/internal/cli.dirty={{ .IsGitDirty }}
+
+archives:
+  - name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    files:
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+changelog:
+  use: git
+  sort: asc
+  abbrev: 0
+  format: '{{ .Message }} ([`{{ printf "%.7s" .SHA }}`](https://github.com/zigai/gmail-tools/commit/{{ .SHA }}))'
+  groups:
+    - title: Breaking Changes
+      regexp: '^[a-z]+(\([^)]+\))?!:'
+      order: 0
+    - title: Features
+      regexp: '^feat(\([^)]+\))?:'
+      order: 1
+    - title: Bug Fixes
+      regexp: '^fix(\([^)]+\))?:'
+      order: 2
+    - title: Other Changes
+      order: 999
+  filters:
+    exclude:
+      - '^(docs|test|ci|chore|style|build)(\([^)]+\))?:'
+      - "^Merge (pull request|branch|remote-tracking branch) "
+release:
+  github:
+    owner: "zigai"
+    name: "gmail-tools"
+  draft: false
+  prerelease: auto
+  footer: |
+    {{ if .PreviousTag }}[Full changelog](https://github.com/zigai/gmail-tools/compare/{{ .PreviousTag }}...{{ .Tag }}){{ else }}[Source](https://github.com/zigai/gmail-tools/tree/{{ .Tag }}){{ end }}

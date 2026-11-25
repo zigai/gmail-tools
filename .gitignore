@@ -1,0 +1,12 @@
+gmail-tools
+gmail-tools.exe
+dist/
+coverage.out
+.DS_Store
+*.test
+*.prof
+coverage/
+
+/bin/
+
+.cache/
