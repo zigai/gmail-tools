@@ -2,6 +2,7 @@
 
 [![tests](https://img.shields.io/github/actions/workflow/status/zigai/gmail-tools/test.yml?branch=master&label=tests&labelColor=30363d)](https://github.com/zigai/gmail-tools/actions/workflows/test.yml)
 [![go](https://img.shields.io/github/go-mod/go-version/zigai/gmail-tools?label=&logo=go&logoColor=white&labelColor=30363d)](go.mod)
+[![license](https://img.shields.io/github/license/zigai/gmail-tools?label=license&labelColor=30363d)](LICENSE)
 
 Give an AI agent your Gmail and Google Drive across several Google accounts. It can search, read, label, and clean up mail, and it can't send mail, share files, or change forwarding.
 
@@ -80,3 +81,7 @@ Flags:
 
 Use "gmail-tools [command] --help" for more information about a command.
 ```
+
+## License
+
+[MIT](LICENSE)
